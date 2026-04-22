@@ -1,0 +1,37 @@
+{
+  "groqApiKey": "gsk_XXXXXXXXXXXXXXXXXXXXXXXX",
+  "groqModel": "llama-3.3-70b-versatile",
+  "groups": [
+    {
+      "id": "120363XXXXXXXXXX@g.us",
+      "name": "Mi Grupo de Ventas",
+      "active": true,
+      "keepAlive": {
+        "enabled": true,
+        "silenceHoursThreshold": 2
+      },
+      "sellers": [
+        "591XXXXXXXXX@lid"
+      ],
+      "amplify": {
+        "enabled": true,
+        "delayMinutes": 15,
+        "prefix": "📢 *Oferta destacada:*\n\n"
+      }
+    }
+  ],
+  "appInfo": {
+    "name": "wibc.ai",
+    "description": "Plataforma para crear bots de ventas en WhatsApp con IA.",
+    "url": "https://wibc.oneapp.dev",
+    "pricing": ""
+  },
+  "botTriggers": [
+    "@bot",
+    "wibca",
+    "wibc"
+  ],
+  "adminNumbers": [
+    "591XXXXXXXXX"
+  ]
+}

@@ -4,6 +4,9 @@
   "description": "Bot de WhatsApp para grupos — mantiene actividad, amplifica vendedores con IA, responde preguntas",
   "main": "server.js",
   "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js"
   },

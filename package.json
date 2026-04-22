@@ -11,7 +11,7 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "@whiskeysockets/baileys": "6.7.18",
     "@hapi/boom": "^10.0.1",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

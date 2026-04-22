@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GroupBot — Panel</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f0f1a;color:#e2e2e8;min-height:100vh}
+.topbar{background:#1a1a2e;border-bottom:1px solid #2d2d4e;padding:0 24px;height:56px;display:flex;align-items:center;gap:12px}
+.topbar-logo{font-size:1.1rem;font-weight:800;color:#8b5cf6}
+.topbar-logo span{color:#e2e2e8}
+.status-dot{width:10px;height:10px;border-radius:50%;background:#64748b;flex-shrink:0;transition:background .3s}
+.status-dot.connected{background:#22c55e;box-shadow:0 0 8px #22c55e}
+.status-dot.connecting{background:#f59e0b;animation:pulse .8s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#statusText{font-size:.82rem;color:#94a3b8}
+
+.layout{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 56px)}
+.sidebar{background:#13131f;border-right:1px solid #2d2d4e;padding:16px 0}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:.88rem;font-weight:600;color:#94a3b8;cursor:pointer;transition:.15s;border-left:3px solid transparent}
+.nav-item:hover{color:#e2e2e8;background:rgba(139,92,246,.08)}
+.nav-item.active{color:#a78bfa;border-left-color:#8b5cf6;background:rgba(139,92,246,.1)}
+.nav-icon{font-size:1rem;width:20px;text-align:center}
+
+.main{padding:24px;overflow-y:auto}
+.section{display:none}.section.active{display:block}
+.page-title{font-size:1.1rem;font-weight:800;margin-bottom:20px;color:#e2e2e8}
+
+.card{background:#1a1a2e;border:1px solid #2d2d4e;border-radius:12px;padding:18px;margin-bottom:16px}
+.card-label{font-size:.72rem;font-weight:700;color:#8b5cf6;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.card-title{font-size:.95rem;font-weight:700;margin-bottom:6px}
+.card-sub{font-size:.8rem;color:#64748b;line-height:1.5}
+
+label{display:block;font-size:.78rem;font-weight:600;color:#94a3b8;margin-bottom:5px;margin-top:12px}
+label:first-child{margin-top:0}
+input,select,textarea{width:100%;padding:9px 12px;background:#0f0f1a;border:1.5px solid #2d2d4e;border-radius:8px;color:#e2e2e8;font-family:inherit;font-size:.88rem;outline:none;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{border-color:#8b5cf6}
+textarea{resize:vertical;min-height:70px}
+select option{background:#1a1a2e}
+
+.btn{padding:9px 18px;border-radius:8px;border:none;font-family:inherit;font-size:.85rem;font-weight:700;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:7px}
+.btn-primary{background:#7c3aed;color:#fff}.btn-primary:hover{background:#6d28d9}
+.btn-secondary{background:#1e1e3a;color:#a78bfa;border:1.5px solid #3d3d6e}.btn-secondary:hover{background:#2d2d4e}
+.btn-danger{background:rgba(220,38,38,.15);color:#f87171;border:1.5px solid rgba(220,38,38,.3)}.btn-danger:hover{background:rgba(220,38,38,.25)}
+.btn-sm{padding:6px 12px;font-size:.78rem}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.code-box{background:#0f0f1a;border:2px solid #8b5cf6;border-radius:12px;padding:20px;text-align:center;margin:16px 0}
+.code-box .code{font-size:2.2rem;font-weight:900;letter-spacing:.25em;color:#a78bfa;font-family:monospace}
+.code-box .hint{font-size:.78rem;color:#64748b;margin-top:8px}
+
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.7rem;font-weight:700}
+.badge-green{background:rgba(34,197,94,.15);color:#22c55e}
+.badge-red{background:rgba(239,68,68,.15);color:#f87171}
+.badge-yellow{background:rgba(245,158,11,.15);color:#f59e0b}
+
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #2d2d4e}
+.toggle-row:last-child{border-bottom:none}
+.toggle-label{font-size:.85rem;font-weight:600}
+.toggle-sub{font-size:.75rem;color:#64748b;margin-top:2px}
+.toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:#2d2d4e;border-radius:22px;cursor:pointer;transition:.2s}
+.toggle-slider::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.toggle input:checked+.toggle-slider{background:#7c3aed}
+.toggle input:checked+.toggle-slider::before{transform:translateX(18px)}
+
+.seller-tag{display:inline-flex;align-items:center;gap:6px;background:#1e1e3a;border:1px solid #3d3d6e;border-radius:20px;padding:4px 10px;font-size:.78rem;margin:3px}
+.seller-tag button{background:none;border:none;color:#64748b;cursor:pointer;font-size:.9rem;line-height:1;padding:0}
+.seller-tag button:hover{color:#f87171}
+
+.row{display:flex;gap:12px;align-items:flex-end}
+.row .input-wrap{flex:1}
+
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:#1e1e3a;color:#e2e2e8;padding:10px 20px;border-radius:10px;font-size:.85rem;font-weight:600;z-index:9999;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;border:1px solid #3d3d6e}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.ok{border-color:#22c55e;color:#22c55e}
+#toast.err{border-color:#f87171;color:#f87171}
+
+@media(max-width:640px){
+  .layout{grid-template-columns:1fr}
+  .sidebar{display:flex;overflow-x:auto;border-right:none;border-bottom:1px solid #2d2d4e;padding:0}
+  .nav-item{flex-direction:column;gap:3px;padding:10px 14px;font-size:.7rem;border-left:none;border-bottom:3px solid transparent;white-space:nowrap}
+  .nav-item.active{border-left:none;border-bottom-color:#8b5cf6}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">Group<span>Bot</span></div>
+  <div style="flex:1"></div>
+  <div class="status-dot" id="statusDot"></div>
+  <span id="statusText">Desconectado</span>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="nav-item active" onclick="nav('connect')"><span class="nav-icon">📱</span> Conexión</div>
+    <div class="nav-item" onclick="nav('groups')"><span class="nav-icon">👥</span> Grupos</div>
+    <div class="nav-item" onclick="nav('sellers')"><span class="nav-icon">🛍️</span> Vendedores</div>
+    <div class="nav-item" onclick="nav('appinfo')"><span class="nav-icon">🤖</span> Info de la app</div>
+    <div class="nav-item" onclick="nav('send')"><span class="nav-icon">📤</span> Enviar mensaje</div>
+    <div class="nav-item" onclick="nav('logs')" id="navLogs"><span class="nav-icon">📋</span> Logs <span id="logBadge" style="background:#7c3aed;color:#fff;font-size:.65rem;padding:1px 6px;border-radius:10px;margin-left:4px;display:none">0</span></div>
+  </div>
+
+  <div class="main">
+
+    <!-- ── CONEXIÓN ── -->
+    <div class="section active" id="sec-connect">
+      <div class="page-title">Conexión WhatsApp</div>
+
+      <div class="card" id="cardConnected" style="display:none">
+        <div class="card-label">Estado</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="status-dot connected"></div>
+          <div>
+            <div class="card-title">Conectado ✅</div>
+            <div class="card-sub" id="connectedPhoneLabel">Número: —</div>
+          </div>
+          <button class="btn btn-danger btn-sm" style="margin-left:auto" onclick="doDisconnect()">Desconectar</button>
+        </div>
+      </div>
+
+      <div class="card" id="cardConnect">
+        <div class="card-label">Vincular número</div>
+        <p class="card-sub" style="margin-bottom:14px">Ingresa tu número con código de país. Recibirás un código de 8 dígitos en WhatsApp → Dispositivos vinculados → Vincular con número de teléfono.</p>
+        <label>Número de teléfono</label>
+        <div class="row">
+          <div class="input-wrap">
+            <select id="countryCode" style="width:auto;flex-shrink:0">
+              <option value="591">🇧🇴 Bolivia +591</option>
+              <option value="54">🇦🇷 Argentina +54</option>
+              <option value="55">🇧🇷 Brasil +55</option>
+              <option value="56">🇨🇱 Chile +56</option>
+              <option value="57">🇨🇴 Colombia +57</option>
+              <option value="506">🇨🇷 Costa Rica +506</option>
+              <option value="53">🇨🇺 Cuba +53</option>
+              <option value="593">🇪🇨 Ecuador +593</option>
+              <option value="503">🇸🇻 El Salvador +503</option>
+              <option value="502">🇬🇹 Guatemala +502</option>
+              <option value="504">🇭🇳 Honduras +504</option>
+              <option value="52">🇲🇽 México +52</option>
+              <option value="505">🇳🇮 Nicaragua +505</option>
+              <option value="507">🇵🇦 Panamá +507</option>
+              <option value="595">🇵🇾 Paraguay +595</option>
+              <option value="51">🇵🇪 Perú +51</option>
+              <option value="1787">🇵🇷 Puerto Rico +1787</option>
+              <option value="1809">🇩🇴 Rep. Dominicana +1809</option>
+              <option value="598">🇺🇾 Uruguay +598</option>
+              <option value="58">🇻🇪 Venezuela +58</option>
+              <option value="34">🇪🇸 España +34</option>
+              <option value="1">🇺🇸 EE.UU. / Canadá +1</option>
+            </select>
+          </div>
+          <div class="input-wrap">
+            <input type="tel" id="phoneInput" placeholder="74079169" autocomplete="off">
+          </div>
+          <button class="btn btn-primary" id="connectBtn" onclick="requestCode()">Obtener código</button>
+        </div>
+
+        <div class="code-box" id="codeBox" style="display:none">
+          <div class="code" id="codeDisplay">— — — —</div>
+          <div class="hint">Ingresa este código en WhatsApp → Dispositivos vinculados → Vincular con número de teléfono</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── GRUPOS ── -->
+    <div class="section" id="sec-groups">
+      <div class="page-title">Grupos</div>
+
+      <div class="card">
+        <div class="card-label">Mis grupos de WhatsApp</div>
+        <p class="card-sub" style="margin-bottom:14px">Escanea tus grupos y activa los que quieres que el bot maneje.</p>
+        <button class="btn btn-primary" id="scanBtn" onclick="scanGroups()">🔍 Escanear mis grupos</button>
+      </div>
+
+      <div id="scannedGroups" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:.8rem;color:#64748b" id="scannedCount"></div>
+          <input type="text" id="groupSearch" placeholder="Buscar grupo…" oninput="filterScanned(this.value)"
+            style="width:200px;padding:6px 10px;font-size:.8rem">
+        </div>
+        <div id="scannedList"></div>
+      </div>
+
+      <div id="activeGroupsList" style="margin-top:8px"></div>
+    </div>
+
+    <!-- ── VENDEDORES ── -->
+    <div class="section" id="sec-sellers">
+      <div class="page-title">Vendedores a amplificar</div>
+      <div class="card">
+        <div class="card-label">¿Cómo funciona?</div>
+        <p class="card-sub">Cuando un vendedor de esta lista publica algo en el grupo, el bot espera unos minutos y reenvía una versión mejorada con IA.</p>
+      </div>
+      <div id="sellersByGroup"></div>
+    </div>
+
+    <!-- ── INFO APP ── -->
+    <div class="section" id="sec-appinfo">
+      <div class="page-title">Información de tu app</div>
+      <div class="card">
+        <div class="card-label">Datos que usa el bot para responder preguntas</div>
+        <label>Nombre de la app</label>
+        <input type="text" id="appName" placeholder="wibc.ai">
+        <label>Descripción</label>
+        <textarea id="appDesc" rows="3" placeholder="Plataforma para crear bots de ventas en WhatsApp…"></textarea>
+        <label>URL / Sitio web</label>
+        <input type="text" id="appUrl" placeholder="https://wibc.ai">
+        <label>Precios / planes (opcional)</label>
+        <textarea id="appPricing" rows="2" placeholder="Ej: Plan básico $10/mes, Plan pro $25/mes…"></textarea>
+        <label>API Key de Groq</label>
+        <input type="password" id="groqKey" placeholder="gsk_...">
+        <div style="margin-top:14px">
+          <button class="btn btn-primary" onclick="saveAppInfo()">💾 Guardar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ENVIAR ── -->
+    <div class="section" id="sec-send">
+      <div class="page-title">Enviar mensaje a grupo</div>
+      <div class="card">
+        <label>Grupo destino</label>
+        <select id="sendGroupSelect"><option value="">— Selecciona un grupo —</option></select>
+        <label>Mensaje</label>
+        <textarea id="sendText" rows="4" placeholder="Escribe el mensaje…"></textarea>
+        <div style="margin-top:14px">
+          <button class="btn btn-primary" onclick="sendManual()">📤 Enviar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── LOGS ── -->
+    <div class="section" id="sec-logs">
+      <div class="page-title" style="display:flex;align-items:center;gap:10px">
+        📋 Logs en tiempo real
+        <span id="liveIndicator" style="width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;display:inline-block;animation:pulse .8s ease-in-out infinite"></span>
+        <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="clearLogsUI()">Limpiar</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <button class="btn btn-sm logf active-filter" onclick="filterLogs('')"          style="background:#2d2d4e;color:#a78bfa;border:1px solid #3d3d6e">Todos</button>
+        <button class="btn btn-sm logf"               onclick="filterLogs('seller')"    style="background:#2d2d4e;color:#f59e0b;border:1px solid #3d3d6e">🛍️ Publicidad</button>
+        <button class="btn btn-sm logf"               onclick="filterLogs('amplify')"   style="background:#2d2d4e;color:#22c55e;border:1px solid #3d3d6e">📢 Amplificados</button>
+        <button class="btn btn-sm logf"               onclick="filterLogs('keepalive')" style="background:#2d2d4e;color:#60a5fa;border:1px solid #3d3d6e">💬 Keep-alive</button>
+        <button class="btn btn-sm logf"               onclick="filterLogs('reply')"     style="background:#2d2d4e;color:#c084fc;border:1px solid #3d3d6e">🤖 Respuestas</button>
+        <button class="btn btn-sm logf"               onclick="filterLogs('error')"     style="background:#2d2d4e;color:#f87171;border:1px solid #3d3d6e">❌ Errores</button>
+      </div>
+      <div id="logsWrap" style="display:flex;flex-direction:column;gap:6px;max-height:70vh;overflow-y:auto"></div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let cfg = {};
+
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+const toast = (msg, type='') => {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = type ? 'on '+type : 'on';
+  clearTimeout(el._t); el._t = setTimeout(() => el.className = '', 3000);
+};
+
+// ── Navegación ────────────────────────────────────────────────────────────────
+const nav = (id) => {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('active');
+  document.querySelector(`[onclick="nav('${id}')"]`).classList.add('active');
+  if (id === 'groups')   { loadCfg().then(() => { renderActiveGroups(); }); }
+  if (id === 'sellers')  renderSellers();
+  if (id === 'appinfo')  renderAppInfo();
+  if (id === 'send')     renderSendSelect();
+  if (id === 'logs')     loadLogs();
+};
+
+// ── Estado ────────────────────────────────────────────────────────────────────
+const pollStatus = async () => {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    const dot  = document.getElementById('statusDot');
+    const txt  = document.getElementById('statusText');
+    const cardC = document.getElementById('cardConnected');
+    const cardN = document.getElementById('cardConnect');
+
+    dot.className = 'status-dot ' + (d.status === 'connected' ? 'connected' : d.status === 'connecting' ? 'connecting' : '');
+    txt.textContent = d.status === 'connected' ? `Conectado · ${d.phone||''}` : d.status === 'connecting' ? 'Conectando…' : 'Desconectado';
+
+    if (d.status === 'connected') {
+      cardC.style.display = '';
+      cardN.style.display = 'none';
+      document.getElementById('connectedPhoneLabel').textContent = 'Número: +' + (d.phone||'');
+    } else {
+      cardC.style.display = 'none';
+      cardN.style.display = '';
+    }
+  } catch {}
+};
+setInterval(pollStatus, 3000);
+pollStatus();
+
+// ── Cargar config ─────────────────────────────────────────────────────────────
+const loadCfg = async () => {
+  const r = await fetch('/api/config');
+  cfg = await r.json();
+};
+
+const saveCfgToServer = async () => {
+  await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(cfg) });
+};
+
+// ── Conexión ──────────────────────────────────────────────────────────────────
+const requestCode = async () => {
+  const country = document.getElementById('countryCode').value;
+  const number  = document.getElementById('phoneInput').value.trim().replace(/\D/g,'');
+  if (!number) { toast('Ingresa tu número', 'err'); return; }
+  const phone = country + number;
+  const btn = document.getElementById('connectBtn');
+  btn.disabled = true; btn.textContent = 'Solicitando…';
+  document.getElementById('codeBox').style.display = 'none';
+  try {
+    const r = await fetch('/api/connect', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ phone }) });
+    const d = await r.json();
+    if (d.success) {
+      const raw = d.code.replace(/\D/g,'');
+      const fmt = raw.length === 8 ? raw.slice(0,4)+'-'+raw.slice(4) : d.code;
+      document.getElementById('codeDisplay').textContent = fmt;
+      document.getElementById('codeBox').style.display = '';
+      toast('Código generado — ingrésalo en WhatsApp', 'ok');
+    } else {
+      toast(d.message || 'Error al solicitar código', 'err');
+    }
+  } catch (e) {
+    toast('Error de conexión: ' + e.message, 'err');
+  }
+  btn.disabled = false; btn.textContent = 'Obtener código';
+};
+
+const doDisconnect = async () => {
+  if (!confirm('¿Desconectar el bot?')) return;
+  await fetch('/api/disconnect', { method:'POST' });
+  toast('Desconectado', 'ok');
+  document.getElementById('codeBox').style.display = 'none';
+};
+
+// ── Grupos ────────────────────────────────────────────────────────────────────
+let scannedGroups = [];
+
+const scanGroups = async () => {
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true; btn.textContent = '⏳ Escaneando…';
+  try {
+    const r = await fetch('/api/groups/scan');
+    const d = await r.json();
+    if (!d.success) { toast(d.message || 'Error al escanear', 'err'); return; }
+    scannedGroups = d.groups;
+    renderScanned(scannedGroups);
+    document.getElementById('scannedGroups').style.display = '';
+    document.getElementById('scannedCount').textContent = `${d.groups.length} grupos encontrados`;
+    toast(`${d.groups.length} grupos encontrados`, 'ok');
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+  btn.disabled = false; btn.textContent = '🔍 Escanear mis grupos';
+};
+
+const filterScanned = (q) => {
+  const filtered = q ? scannedGroups.filter(g => g.name.toLowerCase().includes(q.toLowerCase())) : scannedGroups;
+  renderScanned(filtered);
+};
+
+const renderScanned = (groups) => {
+  const activeCfgIds = new Set((cfg.groups||[]).map(g => g.id));
+  document.getElementById('scannedList').innerHTML = groups.map(g => {
+    const isActive = activeCfgIds.has(g.id);
+    return `
+    <div class="card" style="margin-bottom:8px;padding:12px 16px;display:flex;align-items:center;gap:12px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(g.name)}</div>
+        <div style="font-size:.72rem;color:#64748b;margin-top:2px">${g.participants} participantes · <span style="font-family:monospace;font-size:.68rem">${g.id}</span></div>
+      </div>
+      ${isActive
+        ? `<span class="badge badge-green">✓ Activo</span>
+           <button class="btn btn-danger btn-sm" onclick="deactivateGroup('${g.id}')">Quitar</button>`
+        : `<button class="btn btn-primary btn-sm" onclick="activateGroup('${g.id}','${esc(g.name).replace(/'/g,"\\'")}')">+ Activar</button>`
+      }
+    </div>`;
+  }).join('') || '<p style="color:#64748b;font-size:.85rem">Sin resultados</p>';
+
+  renderActiveGroups();
+};
+
+const activateGroup = async (id, name) => {
+  await loadCfg();
+  cfg.groups = cfg.groups || [];
+  if (cfg.groups.find(g => g.id === id)) { toast('Ya está activo', 'err'); return; }
+  cfg.groups.push({
+    id, name, active: true,
+    keepAlive: { enabled: true, silenceHoursThreshold: 3 },
+    sellers: [],
+    amplify: { enabled: true, delayMinutes: 2, prefix: '📢 *Oferta destacada:*\n\n' },
+  });
+  await saveCfgToServer();
+  toast(`"${name}" activado ✓`, 'ok');
+  renderScanned(scannedGroups);
+};
+
+const deactivateGroup = async (id) => {
+  await loadCfg();
+  cfg.groups = (cfg.groups||[]).filter(g => g.id !== id);
+  await saveCfgToServer();
+  toast('Grupo quitado', 'ok');
+  renderScanned(scannedGroups);
+};
+
+const renderActiveGroups = () => {
+  const active = (cfg.groups||[]).filter(g => g.active);
+  const wrap = document.getElementById('activeGroupsList');
+  if (!active.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `
+    <div style="font-size:.78rem;font-weight:700;color:#8b5cf6;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 8px">Grupos activos — configuración</div>
+    ${active.map((g, i) => `
+    <div class="card" style="margin-bottom:10px">
+      <div style="font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+        <span>${esc(g.name)}</span>
+        <span class="badge badge-green">Activo</span>
+        <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="testKeepAlive('${g.id}', this)" title="Enviar mensaje keep-alive ahora para probar">
+          ⚡ Probar keep-alive
+        </button>
+      </div>
+
+      <div class="toggle-row">
+        <div><div class="toggle-label">Keep-alive</div><div class="toggle-sub">Habla cuando hay silencio</div></div>
+        <label class="toggle"><input type="checkbox" ${g.keepAlive?.enabled?'checked':''} onchange="patchGroup('${g.id}','keepAlive.enabled',this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #2d2d4e">
+        <span style="font-size:.82rem;color:#94a3b8;flex:1">Horas de silencio antes de hablar</span>
+        <input type="number" min="1" max="24" value="${g.keepAlive?.silenceHoursThreshold||3}"
+          onchange="patchGroup('${g.id}','keepAlive.silenceHoursThreshold',+this.value)"
+          style="width:60px;padding:5px 8px;font-size:.82rem">
+      </div>
+
+      <div class="toggle-row">
+        <div><div class="toggle-label">Amplificar vendedores</div><div class="toggle-sub">Reenvía sus mensajes mejorados con IA</div></div>
+        <label class="toggle"><input type="checkbox" ${g.amplify?.enabled?'checked':''} onchange="patchGroup('${g.id}','amplify.enabled',this.checked)"><span class="toggle-slider"></span></label>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+        <span style="font-size:.82rem;color:#94a3b8;flex:1">Minutos de espera antes de amplificar</span>
+        <input type="number" min="1" max="60" value="${g.amplify?.delayMinutes||2}"
+          onchange="patchGroup('${g.id}','amplify.delayMinutes',+this.value)"
+          style="width:60px;padding:5px 8px;font-size:.82rem">
+      </div>
+    </div>`).join('')}`;
+};
+
+const patchGroup = async (id, dotPath, value) => {
+  await loadCfg();
+  const g = cfg.groups.find(g => g.id === id);
+  if (!g) return;
+  // Soporte para rutas con punto: "keepAlive.enabled"
+  const parts = dotPath.split('.');
+  let obj = g;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!obj[parts[i]]) obj[parts[i]] = {};
+    obj = obj[parts[i]];
+  }
+  obj[parts[parts.length - 1]] = value;
+  await saveCfgToServer();
+  toast('Guardado ✓', 'ok');
+};
+
+// ── Vendedores ────────────────────────────────────────────────────────────────
+const renderSellers = async () => {
+  await loadCfg();
+  const wrap = document.getElementById('sellersByGroup');
+  if (!cfg.groups?.length) { wrap.innerHTML = '<p style="color:#64748b;font-size:.85rem">Primero activa un grupo en la sección Grupos.</p>'; return; }
+  wrap.innerHTML = cfg.groups.map((g, gi) => `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="card-label" style="margin:0">${g.name || 'Grupo '+gi}</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-secondary btn-sm" onclick="selectAllParticipants(${gi})">✅ Todos</button>
+          <button class="btn btn-secondary btn-sm" onclick="deselectAllParticipants(${gi})">❌ Ninguno</button>
+          <button class="btn btn-secondary btn-sm" onclick="scanParticipants('${g.id}',${gi})">👥 Escanear</button>
+        </div>
+      </div>
+      <div id="participants-${gi}" style="margin-bottom:10px;display:none"></div>
+      <div id="sellers-tags-${gi}" style="margin-bottom:10px">
+        ${(g.sellers||[]).map((s,si) => `<span class="seller-tag">📞 ${s}<button onclick="removeSeller(${gi},${si})">×</button></span>`).join('')}
+        ${!(g.sellers||[]).length ? '<span style="color:#64748b;font-size:.8rem">Sin vendedores configurados</span>' : ''}
+      </div>
+      <div class="row">
+        <div class="input-wrap"><input type="tel" id="newSeller-${gi}" placeholder="59174079169"></div>
+        <button class="btn btn-secondary btn-sm" onclick="addSeller(${gi})">+ Manual</button>
+      </div>
+    </div>
+  `).join('');
+};
+
+const scanParticipants = async (groupId, gi) => {
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '⏳ Escaneando…';
+  try {
+    const r = await fetch(`/api/groups/${encodeURIComponent(groupId)}/participants`);
+    const d = await r.json();
+    if (!d.success) { toast(d.message || 'Error', 'err'); return; }
+
+    const activeSellers = new Set((cfg.groups[gi].sellers||[]).map(s => s.replace(/\D/g,'')));
+    const wrap = document.getElementById('participants-'+gi);
+    wrap.style.display = '';
+    wrap.innerHTML = `
+      <div style="font-size:.75rem;color:#64748b;margin-bottom:8px">${d.participants.length} participantes — haz clic para agregar como vendedor</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${d.participants.map(p => {
+          const phone = p.phone;
+          const isActive = activeSellers.has(phone);
+          const label = p.name ? `${p.name} (${phone})` : phone;
+          return `<button class="seller-tag" data-phone="${phone}" data-label="${esc(label)}" style="cursor:pointer;${isActive?'border-color:#22c55e;color:#22c55e':''}"
+            onclick="toggleParticipant(${gi},'${phone}','${label.replace(/'/g,"\\'")}',this)">
+            ${isActive?'✓ ':''} ${esc(label)}${p.admin?' 👑':''}
+          </button>`;
+        }).join('')}
+      </div>`;
+    toast(`${d.participants.length} participantes cargados`, 'ok');
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+  btn.disabled = false; btn.textContent = '👥 Escanear participantes';
+};
+
+const selectAllParticipants = async (gi) => {
+  const wrap = document.getElementById('participants-'+gi);
+  if (!wrap || wrap.style.display === 'none') {
+    toast('Primero escanea los participantes', 'err'); return;
+  }
+  await loadCfg();
+  const btns = wrap.querySelectorAll('button.seller-tag');
+  const phones = [];
+  btns.forEach(btn => {
+    const phone = btn.getAttribute('data-phone');
+    if (phone) phones.push(phone);
+  });
+  cfg.groups[gi].sellers = [...new Set(phones)];
+  await saveCfgToServer();
+  // Actualizar visual
+  btns.forEach(btn => {
+    btn.style.borderColor = '#22c55e';
+    btn.style.color = '#22c55e';
+    const orig = btn.getAttribute('data-label') || btn.textContent.replace('✓ ','').trim();
+    btn.innerHTML = '✓ ' + esc(orig);
+  });
+  updateSellerTags(gi);
+  toast(`${phones.length} vendedores seleccionados ✓`, 'ok');
+};
+
+const deselectAllParticipants = async (gi) => {
+  await loadCfg();
+  cfg.groups[gi].sellers = [];
+  await saveCfgToServer();
+  const wrap = document.getElementById('participants-'+gi);
+  if (wrap) {
+    wrap.querySelectorAll('button.seller-tag').forEach(btn => {
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      const orig = btn.getAttribute('data-label') || btn.textContent.replace('✓ ','').trim();
+      btn.innerHTML = esc(orig);
+    });
+  }
+  updateSellerTags(gi);
+  toast('Vendedores deseleccionados', 'ok');
+};
+
+const updateSellerTags = (gi) => {
+  const tagsWrap = document.getElementById('sellers-tags-'+gi);
+  if (!tagsWrap) return;
+  tagsWrap.innerHTML = (cfg.groups[gi].sellers||[]).map((s,si) =>
+    `<span class="seller-tag">📞 ${s}<button onclick="removeSeller(${gi},${si})">×</button></span>`
+  ).join('') || '<span style="color:#64748b;font-size:.8rem">Sin vendedores configurados</span>';
+};
+
+const toggleParticipant = async (gi, phone, label, btn) => {
+  await loadCfg();
+  cfg.groups[gi].sellers = cfg.groups[gi].sellers || [];
+  const idx = cfg.groups[gi].sellers.findIndex(s => s.replace(/\D/g,'') === phone);
+  if (idx >= 0) {
+    cfg.groups[gi].sellers.splice(idx, 1);
+    btn.style.borderColor = ''; btn.style.color = '';
+    btn.innerHTML = esc(label) + (btn.innerHTML.includes('👑') ? ' 👑' : '');
+    toast('Quitado de vendedores', 'ok');
+  } else {
+    cfg.groups[gi].sellers.push(phone);
+    btn.style.borderColor = '#22c55e'; btn.style.color = '#22c55e';
+    btn.innerHTML = '✓ ' + esc(label) + (btn.innerHTML.includes('👑') ? ' 👑' : '');
+    toast(`${label} agregado como vendedor ✓`, 'ok');
+  }
+  await saveCfgToServer();
+  updateSellerTags(gi);
+};
+
+const addSeller = async (gi) => {
+  const inp = document.getElementById('newSeller-'+gi);
+  const num = inp.value.trim().replace(/\D/g,'');
+  if (!num) { toast('Ingresa un número válido', 'err'); return; }
+  cfg.groups[gi].sellers = cfg.groups[gi].sellers || [];
+  if (cfg.groups[gi].sellers.includes(num)) { toast('Ya está en la lista', 'err'); return; }
+  cfg.groups[gi].sellers.push(num);
+  await saveCfgToServer();
+  inp.value = '';
+  renderSellers();
+  toast('Vendedor agregado ✓', 'ok');
+};
+
+const removeSeller = async (gi, si) => {
+  cfg.groups[gi].sellers.splice(si, 1);
+  await saveCfgToServer();
+  renderSellers();
+};
+
+// ── Info app ──────────────────────────────────────────────────────────────────
+const renderAppInfo = async () => {
+  await loadCfg();
+  document.getElementById('appName').value     = cfg.appInfo?.name        || '';
+  document.getElementById('appDesc').value     = cfg.appInfo?.description || '';
+  document.getElementById('appUrl').value      = cfg.appInfo?.url         || '';
+  document.getElementById('appPricing').value  = cfg.appInfo?.pricing     || '';
+  document.getElementById('groqKey').value     = cfg.groqApiKey           || '';
+};
+
+const saveAppInfo = async () => {
+  cfg.appInfo = {
+    name:        document.getElementById('appName').value.trim(),
+    description: document.getElementById('appDesc').value.trim(),
+    url:         document.getElementById('appUrl').value.trim(),
+    pricing:     document.getElementById('appPricing').value.trim(),
+  };
+  cfg.groqApiKey  = document.getElementById('groqKey').value.trim();
+  await saveCfgToServer();
+  toast('Guardado ✓', 'ok');
+};
+
+// ── Enviar mensaje ────────────────────────────────────────────────────────────
+const renderSendSelect = async () => {
+  await loadCfg();
+  const sel = document.getElementById('sendGroupSelect');
+  sel.innerHTML = '<option value="">— Selecciona un grupo —</option>' +
+    (cfg.groups||[]).map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+};
+
+const sendManual = async () => {
+  const groupId = document.getElementById('sendGroupSelect').value;
+  const text    = document.getElementById('sendText').value.trim();
+  if (!groupId || !text) { toast('Selecciona un grupo y escribe un mensaje', 'err'); return; }
+  try {
+    const r = await fetch('/api/send', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ groupId, text }) });
+    const d = await r.json();
+    if (d.success) { toast('Enviado ✓', 'ok'); document.getElementById('sendText').value = ''; }
+    else toast(d.message || 'Error al enviar', 'err');
+  } catch { toast('Error de conexión', 'err'); }
+};
+
+const testKeepAlive = async (groupId, btn) => {
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.textContent = '⏳ Enviando…';
+  try {
+    const r = await fetch(`/api/groups/${encodeURIComponent(groupId)}/keepalive-test`, { method: 'POST' });
+    const d = await r.json();
+    if (d.success) {
+      toast('✅ Mensaje enviado al grupo: ' + d.message.slice(0, 50), 'ok');
+    } else {
+      toast(d.message || 'Error', 'err');
+    }
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+  btn.disabled = false; btn.innerHTML = orig;
+};
+
+// ── Logs ──────────────────────────────────────────────────────────────────────
+let allLogs = [];
+let activeFilter = '';
+let newLogCount = 0;
+
+const LOG_COLORS = {
+  seller:    '#f59e0b',
+  amplify:   '#22c55e',
+  keepalive: '#60a5fa',
+  reply:     '#c084fc',
+  error:     '#f87171',
+  connect:   '#34d399',
+  info:      '#94a3b8',
+};
+
+const formatTime = (iso) => {
+  const d = new Date(iso);
+  return d.toLocaleTimeString('es', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+};
+
+const renderLogEntry = (log) => {
+  const color = LOG_COLORS[log.type] || '#94a3b8';
+  let detail = '';
+  if (log.preview)   detail += `<div style="font-size:.72rem;color:#64748b;margin-top:3px;font-style:italic">"${esc(log.preview)}"</div>`;
+  if (log.improved)  detail += `<div style="font-size:.72rem;color:#22c55e;margin-top:3px">→ ${esc(log.improved)}</div>`;
+  if (log.question)  detail += `<div style="font-size:.72rem;color:#64748b;margin-top:3px">❓ ${esc(log.question)}</div>`;
+  if (log.answer)    detail += `<div style="font-size:.72rem;color:#c084fc;margin-top:3px">💬 ${esc(log.answer)}</div>`;
+  if (log.text)      detail += `<div style="font-size:.72rem;color:#60a5fa;margin-top:3px">${esc(log.text)}</div>`;
+
+  return `<div style="background:#13131f;border:1px solid #2d2d4e;border-left:3px solid ${color};border-radius:8px;padding:10px 12px">
+    <div style="display:flex;align-items:flex-start;gap:8px">
+      <span style="font-size:1rem;flex-shrink:0">${log.icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.83rem;font-weight:600;color:#e2e2e8">${esc(log.message||'')}</div>
+        ${log.group  ? `<div style="font-size:.72rem;color:#64748b;margin-top:2px">👥 ${esc(log.group)}</div>` : ''}
+        ${log.sender ? `<div style="font-size:.72rem;color:#94a3b8">👤 ${esc(log.sender)}</div>` : ''}
+        ${detail}
+      </div>
+      <span style="font-size:.68rem;color:#475569;flex-shrink:0;margin-top:2px">${formatTime(log.timestamp)}</span>
+    </div>
+  </div>`;
+};
+
+const renderLogs = () => {
+  const filtered = activeFilter ? allLogs.filter(l => l.type === activeFilter) : allLogs;
+  const wrap = document.getElementById('logsWrap');
+  if (!wrap) return;
+  if (!filtered.length) {
+    wrap.innerHTML = '<p style="color:#64748b;font-size:.85rem;text-align:center;padding:20px">Sin logs aún</p>';
+    return;
+  }
+  wrap.innerHTML = filtered.map(renderLogEntry).join('');
+};
+
+const filterLogs = (type) => {
+  activeFilter = type;
+  document.querySelectorAll('.logf').forEach(b => b.style.opacity = '0.5');
+  const idx = ['','seller','amplify','keepalive','reply','error'].indexOf(type);
+  document.querySelectorAll('.logf')[idx >= 0 ? idx : 0].style.opacity = '1';
+  renderLogs();
+};
+
+const clearLogsUI = () => { allLogs = []; renderLogs(); };
+
+// SSE — recibir logs en tiempo real
+const startLogStream = () => {
+  const es = new EventSource('/api/logs/stream');
+  es.onmessage = (e) => {
+    try {
+      const log = JSON.parse(e.data);
+      allLogs.unshift(log);
+      if (allLogs.length > 200) allLogs.pop();
+
+      // Badge en nav si no estamos en logs
+      const logsSection = document.getElementById('sec-logs');
+      if (!logsSection?.classList.contains('active')) {
+        newLogCount++;
+        const badge = document.getElementById('logBadge');
+        if (badge) { badge.style.display = ''; badge.textContent = newLogCount > 99 ? '99+' : newLogCount; }
+      } else {
+        renderLogs();
+      }
+    } catch {}
+  };
+  es.onerror = () => {
+    const ind = document.getElementById('liveIndicator');
+    if (ind) ind.style.background = '#f87171';
+  };
+};
+
+// Cargar logs históricos al abrir la sección
+const loadLogs = async () => {
+  const r = await fetch('/api/logs');
+  allLogs = await r.json();
+  renderLogs();
+  // Resetear badge
+  newLogCount = 0;
+  const badge = document.getElementById('logBadge');
+  if (badge) badge.style.display = 'none';
+};
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadCfg();
+startLogStream();
+</script>
+</body>
+</html>

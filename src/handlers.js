@@ -79,8 +79,10 @@ async function handleGroupMessage(sock, msg) {
     const senderJid  = sender; // para @mencionar
 
     // ── 1. Amplificar mensaje de vendedor ─────────────────────────────────────
-    const sellerMatch = isSeller(groupCfg, sender);
-    console.log(`[debug] group=${jid} | sender=${sender} | phone=${phoneFromJid(sender)} | isSeller=${sellerMatch} | sellers=${groupCfg.sellers?.length||0} | firstSeller=${groupCfg.sellers?.[0]||'none'}`);
+    // Si amplify.allMembers está activo, todos los números del grupo cuentan como vendedores.
+    const amplifyAll  = groupCfg.amplify?.allMembers !== false; // por defecto: true
+    const sellerMatch = amplifyAll ? true : isSeller(groupCfg, sender);
+    console.log(`[debug] group=${jid} | sender=${sender} | phone=${phoneFromJid(sender)} | isSeller=${sellerMatch} | amplifyAll=${amplifyAll} | sellers=${groupCfg.sellers?.length||0}`);
 
     if (groupCfg.amplify?.enabled && sellerMatch && text.length > 10) {
         // Detectar si es publicidad real o solo conversación

@@ -117,7 +117,7 @@ function connectWithPairingCode(phoneNumber) {
                 pushLog('connect', { message: `✅ Conectado como ${connectedPhone}` });
                 if (!keepAliveStarted) {
                     keepAliveStarted = true;
-                    startKeepAlive(sock);
+                    startKeepAlive();
                 }
                 attachMessageHandler(sock);
                 return;
@@ -180,7 +180,7 @@ async function reconnect() {
                 pushLog('connect', { message: `Reconectado como ${connectedPhone}` });
                 if (!keepAliveStarted) {
                     keepAliveStarted = true;
-                    startKeepAlive(sock);
+                    startKeepAlive();
                 }
             }
             if (connection === 'close') {

@@ -5,15 +5,23 @@ const cron = require('node-cron');
 const { generateKeepAliveMessage } = require('./groq');
 const { getLastMessageAt, getRecentMessages } = require('./state');
 const { pushLog } = require('./logger');
+const { getSocket } = require('./whatsapp');
 
 const getCfg = () => JSON.parse(fs.readFileSync(path.join(__dirname, '../config.json'), 'utf8'));
 
-let _sock = null;
+let _started = false;
 
-function startKeepAlive(sock) {
-    _sock = sock;
+function startKeepAlive() {
+    if (_started) return;
+    _started = true;
 
     cron.schedule('*/15 * * * *', async () => {
+        const sock = getSocket();
+        if (!sock || sock.ws?.readyState !== 1) {
+            pushLog('keepalive', { message: 'Socket no disponible — saltando ciclo de keep-alive' });
+            return;
+        }
+
         const cfg = getCfg();
         for (const group of cfg.groups) {
             if (!group.active || !group.keepAlive?.enabled) continue;
@@ -33,7 +41,7 @@ function startKeepAlive(sock) {
                 try {
                     const recent  = getRecentMessages(group.id);
                     const message = await generateKeepAliveMessage(group.name, recent);
-                    await _sock.sendMessage(group.id, { text: message });
+                    await sock.sendMessage(group.id, { text: message });
 
                     pushLog('keepalive', {
                         message: `✅ Mensaje enviado a "${group.name}": ${message.slice(0, 60)}…`,

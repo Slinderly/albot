@@ -99,6 +99,7 @@
       ],
       "amplify": {
         "enabled": true,
+        "allMembers": true,
         "delayMinutes": 15,
         "prefix": "📢 *Oferta destacada:*\n\n"
       }

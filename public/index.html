@@ -66,10 +66,6 @@ select option{background:#1a1a2e}
 .toggle input:checked+.toggle-slider{background:#7c3aed}
 .toggle input:checked+.toggle-slider::before{transform:translateX(18px)}
 
-.seller-tag{display:inline-flex;align-items:center;gap:6px;background:#1e1e3a;border:1px solid #3d3d6e;border-radius:20px;padding:4px 10px;font-size:.78rem;margin:3px}
-.seller-tag button{background:none;border:none;color:#64748b;cursor:pointer;font-size:.9rem;line-height:1;padding:0}
-.seller-tag button:hover{color:#f87171}
-
 .row{display:flex;gap:12px;align-items:flex-end}
 .row .input-wrap{flex:1}
 
@@ -99,7 +95,6 @@ select option{background:#1a1a2e}
   <div class="sidebar">
     <div class="nav-item active" onclick="nav('connect')"><span class="nav-icon">📱</span> Conexión</div>
     <div class="nav-item" onclick="nav('groups')"><span class="nav-icon">👥</span> Grupos</div>
-    <div class="nav-item" onclick="nav('sellers')"><span class="nav-icon">🛍️</span> Vendedores</div>
     <div class="nav-item" onclick="nav('appinfo')"><span class="nav-icon">🤖</span> Info de la app</div>
     <div class="nav-item" onclick="nav('send')"><span class="nav-icon">📤</span> Enviar mensaje</div>
     <div class="nav-item" onclick="nav('logs')" id="navLogs"><span class="nav-icon">📋</span> Logs <span id="logBadge" style="background:#7c3aed;color:#fff;font-size:.65rem;padding:1px 6px;border-radius:10px;margin-left:4px;display:none">0</span></div>
@@ -189,16 +184,6 @@ select option{background:#1a1a2e}
       <div id="activeGroupsList" style="margin-top:8px"></div>
     </div>
 
-    <!-- ── VENDEDORES ── -->
-    <div class="section" id="sec-sellers">
-      <div class="page-title">Vendedores a amplificar</div>
-      <div class="card">
-        <div class="card-label">¿Cómo funciona?</div>
-        <p class="card-sub">Cuando un vendedor de esta lista publica algo en el grupo, el bot espera unos minutos y reenvía una versión mejorada con IA.</p>
-      </div>
-      <div id="sellersByGroup"></div>
-    </div>
-
     <!-- ── INFO APP ── -->
     <div class="section" id="sec-appinfo">
       <div class="page-title">Información de tu app</div>
@@ -276,7 +261,6 @@ const nav = (id) => {
   document.getElementById('sec-'+id).classList.add('active');
   document.querySelector(`[onclick="nav('${id}')"]`).classList.add('active');
   if (id === 'groups')   { loadCfg().then(() => { renderActiveGroups(); }); }
-  if (id === 'sellers')  renderSellers();
   if (id === 'appinfo')  renderAppInfo();
   if (id === 'send')     renderSendSelect();
   if (id === 'logs')     loadLogs();
@@ -404,7 +388,6 @@ const activateGroup = async (id, name) => {
   cfg.groups.push({
     id, name, active: true,
     keepAlive: { enabled: true, silenceHoursThreshold: 3 },
-    sellers: [],
     amplify: { enabled: true, delayMinutes: 2, prefix: '📢 *Oferta destacada:*\n\n' },
   });
   await saveCfgToServer();
@@ -474,151 +457,6 @@ const patchGroup = async (id, dotPath, value) => {
   obj[parts[parts.length - 1]] = value;
   await saveCfgToServer();
   toast('Guardado ✓', 'ok');
-};
-
-// ── Vendedores ────────────────────────────────────────────────────────────────
-const renderSellers = async () => {
-  await loadCfg();
-  const wrap = document.getElementById('sellersByGroup');
-  if (!cfg.groups?.length) { wrap.innerHTML = '<p style="color:#64748b;font-size:.85rem">Primero activa un grupo en la sección Grupos.</p>'; return; }
-  wrap.innerHTML = cfg.groups.map((g, gi) => `
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="card-label" style="margin:0">${g.name || 'Grupo '+gi}</div>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-secondary btn-sm" onclick="selectAllParticipants(${gi})">✅ Todos</button>
-          <button class="btn btn-secondary btn-sm" onclick="deselectAllParticipants(${gi})">❌ Ninguno</button>
-          <button class="btn btn-secondary btn-sm" onclick="scanParticipants('${g.id}',${gi})">👥 Escanear</button>
-        </div>
-      </div>
-      <div id="participants-${gi}" style="margin-bottom:10px;display:none"></div>
-      <div id="sellers-tags-${gi}" style="margin-bottom:10px">
-        ${(g.sellers||[]).map((s,si) => `<span class="seller-tag">📞 ${s}<button onclick="removeSeller(${gi},${si})">×</button></span>`).join('')}
-        ${!(g.sellers||[]).length ? '<span style="color:#64748b;font-size:.8rem">Sin vendedores configurados</span>' : ''}
-      </div>
-      <div class="row">
-        <div class="input-wrap"><input type="tel" id="newSeller-${gi}" placeholder="59174079169"></div>
-        <button class="btn btn-secondary btn-sm" onclick="addSeller(${gi})">+ Manual</button>
-      </div>
-    </div>
-  `).join('');
-};
-
-const scanParticipants = async (groupId, gi) => {
-  const btn = event.target;
-  btn.disabled = true; btn.textContent = '⏳ Escaneando…';
-  try {
-    const r = await fetch(`/api/groups/${encodeURIComponent(groupId)}/participants`);
-    const d = await r.json();
-    if (!d.success) { toast(d.message || 'Error', 'err'); return; }
-
-    const activeSellers = new Set((cfg.groups[gi].sellers||[]).map(s => s.replace(/\D/g,'')));
-    const wrap = document.getElementById('participants-'+gi);
-    wrap.style.display = '';
-    wrap.innerHTML = `
-      <div style="font-size:.75rem;color:#64748b;margin-bottom:8px">${d.participants.length} participantes — haz clic para agregar como vendedor</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${d.participants.map(p => {
-          const phone = p.phone;
-          const isActive = activeSellers.has(phone);
-          const label = p.name ? `${p.name} (${phone})` : phone;
-          return `<button class="seller-tag" data-phone="${phone}" data-label="${esc(label)}" style="cursor:pointer;${isActive?'border-color:#22c55e;color:#22c55e':''}"
-            onclick="toggleParticipant(${gi},'${phone}','${label.replace(/'/g,"\\'")}',this)">
-            ${isActive?'✓ ':''} ${esc(label)}${p.admin?' 👑':''}
-          </button>`;
-        }).join('')}
-      </div>`;
-    toast(`${d.participants.length} participantes cargados`, 'ok');
-  } catch (e) { toast('Error: ' + e.message, 'err'); }
-  btn.disabled = false; btn.textContent = '👥 Escanear participantes';
-};
-
-const selectAllParticipants = async (gi) => {
-  const wrap = document.getElementById('participants-'+gi);
-  if (!wrap || wrap.style.display === 'none') {
-    toast('Primero escanea los participantes', 'err'); return;
-  }
-  await loadCfg();
-  const btns = wrap.querySelectorAll('button.seller-tag');
-  const phones = [];
-  btns.forEach(btn => {
-    const phone = btn.getAttribute('data-phone');
-    if (phone) phones.push(phone);
-  });
-  cfg.groups[gi].sellers = [...new Set(phones)];
-  await saveCfgToServer();
-  // Actualizar visual
-  btns.forEach(btn => {
-    btn.style.borderColor = '#22c55e';
-    btn.style.color = '#22c55e';
-    const orig = btn.getAttribute('data-label') || btn.textContent.replace('✓ ','').trim();
-    btn.innerHTML = '✓ ' + esc(orig);
-  });
-  updateSellerTags(gi);
-  toast(`${phones.length} vendedores seleccionados ✓`, 'ok');
-};
-
-const deselectAllParticipants = async (gi) => {
-  await loadCfg();
-  cfg.groups[gi].sellers = [];
-  await saveCfgToServer();
-  const wrap = document.getElementById('participants-'+gi);
-  if (wrap) {
-    wrap.querySelectorAll('button.seller-tag').forEach(btn => {
-      btn.style.borderColor = '';
-      btn.style.color = '';
-      const orig = btn.getAttribute('data-label') || btn.textContent.replace('✓ ','').trim();
-      btn.innerHTML = esc(orig);
-    });
-  }
-  updateSellerTags(gi);
-  toast('Vendedores deseleccionados', 'ok');
-};
-
-const updateSellerTags = (gi) => {
-  const tagsWrap = document.getElementById('sellers-tags-'+gi);
-  if (!tagsWrap) return;
-  tagsWrap.innerHTML = (cfg.groups[gi].sellers||[]).map((s,si) =>
-    `<span class="seller-tag">📞 ${s}<button onclick="removeSeller(${gi},${si})">×</button></span>`
-  ).join('') || '<span style="color:#64748b;font-size:.8rem">Sin vendedores configurados</span>';
-};
-
-const toggleParticipant = async (gi, phone, label, btn) => {
-  await loadCfg();
-  cfg.groups[gi].sellers = cfg.groups[gi].sellers || [];
-  const idx = cfg.groups[gi].sellers.findIndex(s => s.replace(/\D/g,'') === phone);
-  if (idx >= 0) {
-    cfg.groups[gi].sellers.splice(idx, 1);
-    btn.style.borderColor = ''; btn.style.color = '';
-    btn.innerHTML = esc(label) + (btn.innerHTML.includes('👑') ? ' 👑' : '');
-    toast('Quitado de vendedores', 'ok');
-  } else {
-    cfg.groups[gi].sellers.push(phone);
-    btn.style.borderColor = '#22c55e'; btn.style.color = '#22c55e';
-    btn.innerHTML = '✓ ' + esc(label) + (btn.innerHTML.includes('👑') ? ' 👑' : '');
-    toast(`${label} agregado como vendedor ✓`, 'ok');
-  }
-  await saveCfgToServer();
-  updateSellerTags(gi);
-};
-
-const addSeller = async (gi) => {
-  const inp = document.getElementById('newSeller-'+gi);
-  const num = inp.value.trim().replace(/\D/g,'');
-  if (!num) { toast('Ingresa un número válido', 'err'); return; }
-  cfg.groups[gi].sellers = cfg.groups[gi].sellers || [];
-  if (cfg.groups[gi].sellers.includes(num)) { toast('Ya está en la lista', 'err'); return; }
-  cfg.groups[gi].sellers.push(num);
-  await saveCfgToServer();
-  inp.value = '';
-  renderSellers();
-  toast('Vendedor agregado ✓', 'ok');
-};
-
-const removeSeller = async (gi, si) => {
-  cfg.groups[gi].sellers.splice(si, 1);
-  await saveCfgToServer();
-  renderSellers();
 };
 
 // ── Info app ──────────────────────────────────────────────────────────────────

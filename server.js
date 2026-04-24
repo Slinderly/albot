@@ -62,22 +62,6 @@ app.post('/api/config', (req, res) => {
     }
 });
 
-// Limpiar sellers corruptos (IDs largos de Baileys → números reales)
-app.post('/api/groups/:groupId/fix-sellers', async (req, res) => {
-    const groupId = decodeURIComponent(req.params.groupId);
-    const cfg = readCfg();
-    const group = cfg.groups.find(g => g.id === groupId);
-    if (!group) return res.status(404).json({ success: false });
-    const before = group.sellers.length;
-    // Un número de teléfono real tiene entre 7 y 15 dígitos
-    group.sellers = group.sellers.filter(s => {
-        const clean = s.replace(/\D/g,'');
-        return clean.length >= 7 && clean.length <= 15;
-    });
-    saveCfg(cfg);
-    res.json({ success: true, before, after: group.sellers.length, removed: before - group.sellers.length });
-});
-
 // Forzar keep-alive en un grupo ahora mismo (para probar)
 app.post('/api/groups/:groupId/keepalive-test', async (req, res) => {
     const { getSocket } = require('./src/whatsapp');
@@ -116,29 +100,6 @@ app.get('/api/logs', (req, res) => {
 // Logs en tiempo real (Server-Sent Events)
 app.get('/api/logs/stream', (req, res) => {
     addSSEClient(res);
-});
-
-// Escanear participantes de un grupo
-app.get('/api/groups/:groupId/participants', async (req, res) => {
-    const { getSocket } = require('./src/whatsapp');
-    const sock = getSocket();
-    if (!sock || getStatus() !== 'connected') {
-        return res.status(400).json({ success: false, message: 'Bot no conectado' });
-    }
-    try {
-        const groupId = decodeURIComponent(req.params.groupId);
-        const meta = await sock.groupMetadata(groupId);
-        const participants = meta.participants.map(p => ({
-            jid:   p.id,
-            // Guardar el JID completo limpio (sin sufijo :XX) para match exacto
-            phone: p.id.split(':')[0],
-            name:  p.notify || p.name || null,
-            admin: p.admin === 'admin' || p.admin === 'superadmin',
-        }));
-        res.json({ success: true, participants, groupName: meta.subject });
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
 });
 
 // Escanear grupos del WhatsApp conectado

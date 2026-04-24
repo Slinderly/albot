@@ -5,6 +5,9 @@ const { amplifySellerMessage, answerGroupMessage } = require('./groq');
 const { recordMessage, setPendingAmplify, deletePendingAmplify } = require('./state');
 const { pushLog } = require('./logger');
 
+// Import lazy para evitar dependencia circular con whatsapp.js
+const getActiveSock = () => require('./whatsapp').getSocket();
+
 const getCfg      = () => JSON.parse(fs.readFileSync(path.join(__dirname, '../config.json'), 'utf8'));
 // Extraer número limpio de un JID (maneja formato 591XXXX:12@s.whatsapp.net)
 const phoneFromJid = (jid) => jid?.split('@')[0]?.split(':')[0]?.replace(/[^0-9]/g, '') || '';
@@ -12,28 +15,6 @@ const phoneFromJid = (jid) => jid?.split('@')[0]?.split(':')[0]?.replace(/[^0-9]
 const getGroupCfg = (groupId) => {
     const cfg = getCfg();
     return cfg.groups?.find(g => g.id === groupId && g.active);
-};
-
-const isSeller = (groupCfg, senderJid) => {
-    if (!groupCfg.sellers?.length) return false;
-    // El sender puede ser @lid o @s.whatsapp.net
-    // Los sellers guardados pueden ser JIDs completos o números
-    const senderClean = senderJid.split(':')[0]; // quitar sufijo :XX si existe
-
-    return groupCfg.sellers.some(s => {
-        const sellerClean = s.split(':')[0];
-        // Match exacto de JID (cubre @lid y @s.whatsapp.net)
-        if (sellerClean === senderClean) return true;
-        // Match por número (para sellers guardados como solo número)
-        const senderNum = senderJid.split('@')[0].split(':')[0].replace(/\D/g,'');
-        const sellerNum = s.split('@')[0].split(':')[0].replace(/\D/g,'');
-        if (senderNum && sellerNum && senderNum.length >= 7 && sellerNum.length >= 7) {
-            if (senderNum === sellerNum) return true;
-            if (senderNum.endsWith(sellerNum.slice(-8))) return true;
-            if (sellerNum.endsWith(senderNum.slice(-8))) return true;
-        }
-        return false;
-    });
 };
 
 const isAdmin = (senderJid) => {
@@ -78,13 +59,8 @@ async function handleGroupMessage(sock, msg) {
     const senderName = msg.pushName || phoneFromJid(sender);
     const senderJid  = sender; // para @mencionar
 
-    // ── 1. Amplificar mensaje de vendedor ─────────────────────────────────────
-    // Si amplify.allMembers está activo, todos los números del grupo cuentan como vendedores.
-    const amplifyAll  = groupCfg.amplify?.allMembers !== false; // por defecto: true
-    const sellerMatch = amplifyAll ? true : isSeller(groupCfg, sender);
-    console.log(`[debug] group=${jid} | sender=${sender} | phone=${phoneFromJid(sender)} | isSeller=${sellerMatch} | amplifyAll=${amplifyAll} | sellers=${groupCfg.sellers?.length||0}`);
-
-    if (groupCfg.amplify?.enabled && sellerMatch && text.length > 10) {
+    // ── 1. Amplificar mensaje de cualquier usuario ────────────────────────────
+    if (groupCfg.amplify?.enabled && text.length > 10) {
         // Detectar si es publicidad real o solo conversación
         const isAd = /\d+[\s]*bs|precio|vendo|venta|oferta|disponible|stock|contacto|llama|escrib|whatsapp|delivery|envio|envío|\$|usd|bob/i.test(text) || text.length > 40;
 
@@ -110,7 +86,11 @@ async function handleGroupMessage(sock, msg) {
                     const mention  = `@${phoneFromJid(senderJid)}`;
                     const fullMsg  = `${prefix}${improved}\n\n${mention}`;
 
-                    await sock.sendMessage(jid, {
+                    // Usar siempre el socket activo al momento de enviar (no el del closure)
+                    const activeSock = getActiveSock();
+                    if (!activeSock) throw new Error('Sin conexión WhatsApp activa');
+
+                    await activeSock.sendMessage(jid, {
                         text:     fullMsg,
                         mentions: [senderJid],
                     });

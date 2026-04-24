@@ -20,13 +20,15 @@ if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
 const logger = pino({ level: 'silent' });
 
-let sock           = null;
-let status         = 'disconnected';
-let connectedPhone = null;
+let sock             = null;
+let status           = 'disconnected';
+let connectedPhone   = null;
 let keepAliveStarted = false;
+let reconnectTimer   = null;   // evitar timers duplicados
+let reconnectAttempt = 0;      // para backoff exponencial
 
-const getStatus       = () => status;
-const getSocket       = () => sock;
+const getStatus         = () => status;
+const getSocket         = () => sock;
 const getConnectedPhone = () => connectedPhone;
 
 // ── Construir socket base ─────────────────────────────────────────────────────
@@ -42,16 +44,27 @@ async function buildSocket(usePairing = false) {
             keys:  makeCacheableSignalKeyStore(state.keys, logger),
         },
         printQRInTerminal: false,
-        // CLAVE: mobile:false permite usar requestPairingCode
         mobile: false,
         browser: ['Ubuntu', 'Chrome', '20.0.04'],
         syncFullHistory: false,
-        // No mostrar QR — vamos a pedir código
         ...(usePairing ? { qrTimeout: 0 } : {}),
     });
 
     s.ev.on('creds.update', saveCreds);
     return s;
+}
+
+// ── Programar reconexión con backoff exponencial ──────────────────────────────
+function scheduleReconnect() {
+    if (reconnectTimer) return;      // ya hay uno pendiente
+    if (status === 'connected') return; // ya conectado, no hacer nada
+    reconnectAttempt++;
+    const delay = Math.min(4000 * Math.pow(2, reconnectAttempt - 1), 60_000);
+    console.log(`[whatsapp] Reconectando en ${delay / 1000}s (intento ${reconnectAttempt})…`);
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (status !== 'connected') reconnect(); // verificar de nuevo antes de ejecutar
+    }, delay);
 }
 
 // ── Conectar con código de emparejamiento ─────────────────────────────────────
@@ -63,8 +76,11 @@ function connectWithPairingCode(phoneNumber) {
             fs.mkdirSync(AUTH_DIR, { recursive: true });
         }
 
-        status = 'connecting';
+        status           = 'connecting';
         keepAliveStarted = false;
+        reconnectAttempt = 0;
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+
         let codeResolved = false;
 
         // Timeout global de 2 minutos
@@ -91,7 +107,6 @@ function connectWithPairingCode(phoneNumber) {
                 const clean = phoneNumber.replace(/\D/g, '');
                 console.log(`[pairing] Solicitando código para ${clean}…`);
 
-                // Pequeño delay — Baileys necesita que el socket esté listo
                 await new Promise(r => setTimeout(r, 500));
 
                 try {
@@ -110,7 +125,8 @@ function connectWithPairingCode(phoneNumber) {
             // ── Conectado exitosamente ────────────────────────────────────────
             if (connection === 'open') {
                 clearTimeout(globalTimeout);
-                status = 'connected';
+                status           = 'connected';
+                reconnectAttempt = 0; // resetear backoff al conectar
                 const me = sock.authState?.creds?.me;
                 connectedPhone = me?.id?.split(':')[0]?.split('@')[0] ?? phoneNumber.replace(/\D/g,'');
                 console.log(`[whatsapp] ✅ Conectado como ${connectedPhone}`);
@@ -131,30 +147,31 @@ function connectWithPairingCode(phoneNumber) {
 
                 console.log(`[whatsapp] Conexión cerrada — código: ${errCode}`);
 
-                // restartRequired después de ingresar el código → reconectar
-                if (errCode === DisconnectReason.restartRequired && codeResolved) {
-                    console.log('[whatsapp] Reconectando tras código ingresado…');
-                    status = 'connecting';
-                    setTimeout(() => reconnect(), 2000);
+                if (errCode === DisconnectReason.loggedOut) {
+                    clearTimeout(globalTimeout);
+                    status           = 'disconnected';
+                    connectedPhone   = null;
+                    keepAliveStarted = false;
+                    console.log('[whatsapp] Sesión cerrada (logout)');
                     return;
                 }
 
-                if (errCode === DisconnectReason.loggedOut) {
-                    clearTimeout(globalTimeout);
-                    status = 'disconnected';
-                    connectedPhone = null;
-                    console.log('[whatsapp] Sesión cerrada (logout)');
+                // restartRequired después de ingresar el código → reconectar solo si no estamos ya conectados
+                if (errCode === DisconnectReason.restartRequired) {
+                    if (status !== 'connected') {
+                        console.log('[whatsapp] Reconectando tras restartRequired…');
+                        status = 'connecting';
+                        scheduleReconnect();
+                    }
                     return;
                 }
 
                 // Si ya estaba conectado → reconectar automáticamente
                 if (status === 'connected') {
                     status = 'connecting';
-                    setTimeout(() => reconnect(), 4000);
+                    scheduleReconnect();
                     return;
-                }
-
-                // Si aún no obtuvimos el código → error
+                }                // Si aún no obtuvimos el código → error
                 if (!codeResolved) {
                     clearTimeout(globalTimeout);
                     status = 'disconnected';
@@ -167,13 +184,31 @@ function connectWithPairingCode(phoneNumber) {
 
 // ── Reconexión automática (usa sesión guardada) ───────────────────────────────
 async function reconnect() {
+    // Si ya hay un socket conectado, no hacer nada
+    if (status === 'connected') {
+        console.log('[whatsapp] Ya conectado — ignorando llamada a reconnect()');
+        return;
+    }
+
     try {
+        // Cerrar socket anterior limpiamente y esperar antes de crear uno nuevo
+        if (sock) {
+            try { sock.ev.removeAllListeners(); sock.ws?.close(); } catch (_) {}
+            sock = null;
+            // Esperar 1.5s para que WhatsApp libere la sesión anterior
+            await new Promise(r => setTimeout(r, 1500));
+        }
+
         sock = await buildSocket(false);
         attachMessageHandler(sock);
 
+        let wasOpen = false; // solo reconectar si llegó a estar conectado
+
         sock.ev.on('connection.update', ({ connection, lastDisconnect }) => {
             if (connection === 'open') {
-                status = 'connected';
+                wasOpen          = true;
+                status           = 'connected';
+                reconnectAttempt = 0;
                 const me = sock.authState?.creds?.me;
                 connectedPhone = me?.id?.split(':')[0]?.split('@')[0] ?? connectedPhone;
                 console.log(`[whatsapp] Reconectado como ${connectedPhone}`);
@@ -187,51 +222,83 @@ async function reconnect() {
                 const code = (lastDisconnect?.error instanceof Boom)
                     ? lastDisconnect.error.output?.statusCode
                     : null;
+
+                console.log(`[whatsapp] connection.close — código: ${code} | wasOpen: ${wasOpen}`);
+
                 if (code === DisconnectReason.loggedOut) {
-                    status = 'disconnected';
-                    connectedPhone = null;
+                    status           = 'disconnected';
+                    connectedPhone   = null;
                     keepAliveStarted = false;
                     console.log('[whatsapp] Logout — sesión terminada');
+                } else if (code === DisconnectReason.connectionReplaced) {
+                    // Otra instancia tomó el control. Esperar 5s y reconectar una vez.
+                    // Si hay otra instancia corriendo, el loop se rompe porque esa también
+                    // recibirá 440 cuando esta reconecte.
+                    console.log('[whatsapp] Sesión reemplazada — reconectando en 5s…');
+                    status = 'connecting';
+                    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+                    reconnectTimer = setTimeout(() => {
+                        reconnectTimer = null;
+                        if (status !== 'connected') reconnect();
+                    }, 5000);
+                } else if (code === DisconnectReason.restartRequired) {
+                    // Baileys emite restartRequired como parte normal del protocolo
+                    // Solo reconectar si aún no estamos conectados
+                    if (status !== 'connected') {
+                        status = 'connecting';
+                        scheduleReconnect();
+                    }
+                } else if (wasOpen) {
+                    // Desconexión real después de haber estado conectado
+                    status = 'connecting';
+                    scheduleReconnect();
                 } else {
-                    console.log('[whatsapp] Reconectando…');
-                    setTimeout(() => reconnect(), 4000);
+                    // Cerró antes de abrir — no reconectar
+                    console.log('[whatsapp] Conexión cerrada antes de abrirse — no reconectando');
+                    status = 'disconnected';
                 }
             }
         });
     } catch (e) {
         console.error('[whatsapp] Error al reconectar:', e.message);
-        setTimeout(() => reconnect(), 6000);
+        scheduleReconnect();
     }
 }
 
 // ── Manejador de mensajes ─────────────────────────────────────────────────────
+// Se registra UNA sola vez por socket — no acumula listeners
 function attachMessageHandler(s) {
-    s.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
-        for (const msg of messages) {
-            if (!msg.message) continue;
-            const jid     = msg.key.remoteJid;
-            const isGroup = jid?.endsWith('@g.us');
-            if (jid === 'status@broadcast') continue;
-            try {
-                if (isGroup) await handleGroupMessage(s, msg);
-                else         await handlePrivateMessage(s, msg);
-            } catch (e) {
-                console.error('[msg-error]', e.message);
-            }
+    s.ev.off('messages.upsert', onMessage); // quitar si ya existía
+    s.ev.on('messages.upsert', onMessage);
+}
+
+async function onMessage({ messages, type }) {
+    if (type !== 'notify') return;
+    for (const msg of messages) {
+        if (!msg.message) continue;
+        const jid     = msg.key.remoteJid;
+        const isGroup = jid?.endsWith('@g.us');
+        if (jid === 'status@broadcast') continue;
+        try {
+            if (isGroup) await handleGroupMessage(sock, msg);
+            else         await handlePrivateMessage(sock, msg);
+        } catch (e) {
+            console.error('[msg-error]', e.message);
         }
-    });
+    }
 }
 
 // ── Desconectar ───────────────────────────────────────────────────────────────
 async function disconnect() {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if (sock) {
-        try { await sock.logout(); } catch (_) {}
+        try { sock.ev.removeAllListeners(); await sock.logout(); } catch (_) {}
         sock = null;
     }
-    status = 'disconnected';
-    connectedPhone = null;
+    status           = 'disconnected';
+    connectedPhone   = null;
     keepAliveStarted = false;
+    reconnectAttempt = 0;
     if (fs.existsSync(AUTH_DIR)) fs.rmSync(AUTH_DIR, { recursive: true, force: true });
     console.log('[whatsapp] Desconectado y sesión eliminada');
 }

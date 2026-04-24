@@ -5,6 +5,7 @@ const {
     DisconnectReason,
     fetchLatestBaileysVersion,
     makeCacheableSignalKeyStore,
+    Browsers,
 } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const pino     = require('pino');
@@ -45,8 +46,9 @@ async function buildSocket(usePairing = false) {
         },
         printQRInTerminal: false,
         mobile: false,
-        browser: ['Ubuntu', 'Chrome', '20.0.04'],
+        browser: Browsers.baileys('Desktop'),
         syncFullHistory: false,
+        generateHighQualityLinkPreview: true,
         ...(usePairing ? { qrTimeout: 0 } : {}),
     });
 
